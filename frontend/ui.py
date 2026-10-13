@@ -1,10 +1,13 @@
 """
 frontend/ui.py
-Antarmuka Pengguna Tkinter untuk 2EZ4U APP (Mini Delivery Engine M1 & M2).
-Memiliki layout 3 bagian terpadu:
-1. Panel Kiri : Navigasi Menu Berkelompok (DATA, M1-ARRAY, M1-LINKEDLIST, M2-STACK & QUEUE).
-2. Panel Kanan: Form Parameter Dinamis & Area Hasil (Monospace/Tabel).
-3. Panel Bawah: Riwayat COMMAND (terbaru di atas) & Bar Status Kecepatan Operasi.
+Antarmuka Pengguna Tkinter untuk 2EZ4U Food Delivery.
+Desain disesuaikan persis dengan antarmuka acuan:
+- Header bar warna biru gelap: '2EZ4U Food Delivery'
+- Panel kiri: Tombol navigasi berkelompok (DATA, M1, M2, M3-M4, M5, M6)
+  * M3 ke atas menampilkan popup 'Fitur ini masih dikerjakan'
+- Panel kanan: Form parameter dengan judul & deskripsi singkat, tombol aksi biru gelap,
+  area hasil monospaced dengan bingkai tegas, panel COMMAND (latar putih, log rapi),
+  dan lencana status 'siap' di pojok kiri bawah.
 """
 
 import tkinter as tk
@@ -13,7 +16,7 @@ import os
 import sys
 import time
 
-# Pastikan root workspace ada di sys.path
+# Pastikan root direktori ada di sys.path
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
@@ -25,9 +28,22 @@ from backend.m2_antrean import LayananAntrean, proses_kasir
 class AppUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("2EZ4U APP - Delivery Engine (M1 & M2)")
-        self.root.geometry("1180x760")
-        self.root.minsize(1000, 650)
+        self.root.title("2EZ4U Food Delivery")
+        self.root.geometry("1100x720")
+        self.root.minsize(980, 640)
+        self.root.configure(bg="#ffffff")
+
+        # Palet warna sesuai antarmuka acuan
+        self.COLOR_HEADER_BG = "#1b3a5b"      # Biru gelap elegan
+        self.COLOR_HEADER_FG = "#ffffff"
+        self.COLOR_SIDEBAR_BG = "#f5f6f8"     # Abu-abu muda bersih
+        self.COLOR_BTN_BG = "#ffffff"
+        self.COLOR_BTN_HOVER = "#e8eef5"
+        self.COLOR_BTN_ACTIVE = "#d5e3f3"     # Highlight tombol terpilih
+        self.COLOR_PRIMARY_BTN = "#1b3a5b"    # Tombol aksi utama form
+        self.COLOR_BORDER = "#cccccc"
+        self.COLOR_TEXT_MAIN = "#111827"
+        self.COLOR_TEXT_MUTED = "#555555"
 
         # State Backend
         self.arr_pesanan = None
@@ -35,295 +51,481 @@ class AppUI:
         self.layanan_antrean = LayananAntrean(kapasitas_awal=262144)
         self.counter_id_baru = 1
 
+        self.tombol_menu_dict = []  # Menyimpan referensi tombol menu untuk penyorotan
+        self.menu_aktif = None
+
         self._buat_layout()
-        self._set_status("[SISTEM] Siap. Silakan klik 'LOAD DATA (CSV)' untuk memuat data awal.")
+        # Default buka form Load Data
+        self._pilih_menu("load")
 
     def _buat_layout(self):
-        # 1. PanedWindow Horizontal (Kiri: Menu, Kanan: Form + Output)
-        self.top_paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
-        self.top_paned.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        # 1. TOP HEADER BANNER (Biru gelap penuh)
+        self.top_banner = tk.Frame(self.root, bg=self.COLOR_HEADER_BG, height=44)
+        self.top_banner.pack(side=tk.TOP, fill=tk.X)
+        self.top_banner.pack_propagate(False)
 
-        # --- PANEL KIRI: Menu Navigasi Berkelompok ---
-        self.left_frame = ttk.Frame(self.top_paned, width=300)
-        self.top_paned.add(self.left_frame, weight=0)
+        self.lbl_banner = tk.Label(
+            self.top_banner,
+            text="2EZ4U Food Delivery",
+            bg=self.COLOR_HEADER_BG,
+            fg=self.COLOR_HEADER_FG,
+            font=("Segoe UI", 12, "bold"),
+            padx=14
+        )
+        self.lbl_banner.pack(side=tk.LEFT, fill=tk.Y)
 
-        self.menu_canvas = tk.Canvas(self.left_frame, borderwidth=0, highlightthickness=0, width=300)
-        self.menu_scrollbar = ttk.Scrollbar(self.left_frame, orient="vertical", command=self.menu_canvas.yview)
-        self.scrollable_menu = ttk.Frame(self.menu_canvas)
+        # 2. MAIN WORKSPACE CONTAINER
+        self.main_container = tk.Frame(self.root, bg="#ffffff")
+        self.main_container.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-        self.scrollable_menu.bind(
+        # Split: Kiri (Menu Navigasi) dan Kanan (Konten Kerja)
+        self.left_sidebar = tk.Frame(self.main_container, bg=self.COLOR_SIDEBAR_BG, width=270, bd=1, relief="solid")
+        self.left_sidebar.pack(side=tk.LEFT, fill=tk.Y)
+        self.left_sidebar.pack_propagate(False)
+
+        self.right_workspace = tk.Frame(self.main_container, bg="#ffffff", padx=18, pady=14)
+        self.right_workspace.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
+        # --- MEMBANGUN SIDEBAR MENU KIRI ---
+        self._bangun_sidebar_menu()
+
+        # --- MEMBANGUN WORKSPACE KANAN ---
+        self._bangun_workspace_kanan()
+
+    def _bangun_sidebar_menu(self):
+        # Canvas scrollable untuk daftar tombol menu
+        self.menu_canvas = tk.Canvas(self.left_sidebar, bg=self.COLOR_SIDEBAR_BG, highlightthickness=0, borderwidth=0)
+        self.menu_scrollbar = ttk.Scrollbar(self.left_sidebar, orient="vertical", command=self.menu_canvas.yview)
+        self.menu_inner_frame = tk.Frame(self.menu_canvas, bg=self.COLOR_SIDEBAR_BG)
+
+        self.menu_inner_frame.bind(
             "<Configure>",
             lambda e: self.menu_canvas.configure(scrollregion=self.menu_canvas.bbox("all"))
         )
-        self.menu_canvas.create_window((0, 0), window=self.scrollable_menu, anchor="nw")
-        self.menu_canvas.configure(yscrollcommand=self.menu_scrollbar.set)
+        self.canvas_window = self.menu_canvas.create_window((0, 0), window=self.menu_inner_frame, anchor="nw", width=252)
 
+        self.menu_canvas.configure(yscrollcommand=self.menu_scrollbar.set)
         self.menu_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.menu_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        self._bangun_tombol_menu()
-
-        # --- PANEL KANAN: Form Parameter Dinamis & Area Hasil ---
-        self.right_frame = ttk.Frame(self.top_paned, padding=12)
-        self.top_paned.add(self.right_frame, weight=1)
-
-        self.lbl_judul_menu = ttk.Label(
-            self.right_frame,
-            text="Selamat Datang di 2EZ4U Engine",
-            font=("Segoe UI", 13, "bold"),
-            foreground="#0b5394"
+        # Definisi Kelompok Menu persis sesuai gambar acuan
+        struktur_menu = (
+            ("DATA", [
+                ("Load", "load"),
+            ]),
+            ("M1 - DATA PESANAN", [
+                ("ARRAY - LIHAT PESANAN", "arr_lihat"),
+                ("ARRAY - TAMBAH PESANAN REGULER", "arr_tambah_reg"),
+                ("ARRAY - TAMBAH PESANAN PRIORITAS", "arr_tambah_prio"),
+                ("ARRAY - TAMBAH PESANAN VIP", "arr_tambah_vip"),
+                ("ARRAY - HAPUS PESANAN", "arr_hapus"),
+                ("LINKEDLIST - LIHAT PESANAN", "ll_lihat"),
+                ("LINKEDLIST - TAMBAH PESANAN REGULER", "ll_tambah_reg"),
+                ("LINKEDLIST - TAMBAH PESANAN PRIORITAS", "ll_tambah_prio"),
+                ("LINKEDLIST - TAMBAH PESANAN VIP", "ll_tambah_vip"),
+                ("LINKEDLIST - HAPUS PESANAN", "ll_hapus"),
+            ]),
+            ("M2 - ANTREAN DAN UNDO", [
+                ("Isi antrean FIFO", "m2_isi_fifo"),
+                ("Layani berikutnya", "m2_layani"),
+                ("Undo", "m2_undo"),
+                ("Redo", "m2_redo"),
+                ("Mesin kasir (Postfix)", "m2_postfix"),
+            ]),
+            ("M3 DAN M4 - LAPORAN DAN PENCARIAN", [
+                ("Laporan harian", "m3_laporan"),
+                ("Cari di laporan", "m3_cari_laporan"),
+                ("Bangun indeks hash", "m3_hash"),
+                ("Cari pesanan (oid)", "m3_cari_oid"),
+            ]),
+            ("M5 - KATALOG DAN PRIORITAS", [
+                ("Menu per rentang harga", "m5_katalog"),
+                ("Isi antrean prioritas", "m5_antrean_prio"),
+            ]),
+            ("M6 - PETA DAN RUTE", [
+                ("Muat peta", "m6_peta"),
+            ]),
         )
-        self.lbl_judul_menu.pack(anchor="w", pady=(0, 6))
 
-        # Subframe Form Parameter
-        self.form_frame = ttk.LabelFrame(self.right_frame, text="Parameter Perintah", padding=10)
-        self.form_frame.pack(fill=tk.X, pady=(0, 8))
+        for judul_grup, daftar_tombol in struktur_menu:
+            lbl_grup = tk.Label(
+                self.menu_inner_frame,
+                text=judul_grup,
+                bg=self.COLOR_SIDEBAR_BG,
+                fg=self.COLOR_TEXT_MUTED,
+                font=("Segoe UI", 8, "bold"),
+                anchor="w",
+                padx=8,
+                pady=4
+            )
+            lbl_grup.pack(fill=tk.X, padx=4, pady=(6, 2))
 
-        self.form_container = ttk.Frame(self.form_frame)
-        self.form_container.pack(fill=tk.X)
-        self.lbl_info_default = ttk.Label(self.form_container, text="Pilih menu di panel kiri untuk mengatur parameter perintah.")
-        self.lbl_info_default.pack(anchor="w")
+            for teks_btn, aksi_id in daftar_tombol:
+                btn = tk.Button(
+                    self.menu_inner_frame,
+                    text=teks_btn,
+                    bg=self.COLOR_BTN_BG,
+                    activebackground=self.COLOR_BTN_HOVER,
+                    fg=self.COLOR_TEXT_MAIN,
+                    font=("Segoe UI", 8),
+                    anchor="w",
+                    bd=1,
+                    relief="solid",
+                    padx=6,
+                    pady=2,
+                    cursor="hand2",
+                    command=lambda a=aksi_id: self._pilih_menu(a)
+                )
+                btn.pack(fill=tk.X, padx=8, pady=1)
+                self.tombol_menu_dict.append((aksi_id, btn))
 
-        # Subframe Area Hasil
-        self.hasil_frame = ttk.LabelFrame(self.right_frame, text="Hasil Eksekusi & Data Output", padding=8)
-        self.hasil_frame.pack(fill=tk.BOTH, expand=True)
+    def _bangun_workspace_kanan(self):
+        # 1. Header Informasi Menu Terpilih (Judul & Subtitle Deskriptif)
+        self.frame_header_kanan = tk.Frame(self.right_workspace, bg="#ffffff")
+        self.frame_header_kanan.pack(fill=tk.X, pady=(0, 6))
 
-        self.txt_hasil = tk.Text(self.hasil_frame, wrap="none", font=("Consolas", 10), relief=tk.SOLID, borderwidth=1)
-        self.txt_scroll_y = ttk.Scrollbar(self.hasil_frame, orient="vertical", command=self.txt_hasil.yview)
-        self.txt_scroll_x = ttk.Scrollbar(self.hasil_frame, orient="horizontal", command=self.txt_hasil.xview)
-        self.txt_hasil.configure(yscrollcommand=self.txt_scroll_y.set, xscrollcommand=self.txt_scroll_x.set)
+        self.lbl_judul_aksi = tk.Label(
+            self.frame_header_kanan,
+            text="Array: pesanan REGULER, masuk paling belakang",
+            bg="#ffffff",
+            fg="#111827",
+            font=("Segoe UI", 12, "bold"),
+            anchor="w"
+        )
+        self.lbl_judul_aksi.pack(anchor="w")
 
-        self.txt_scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
-        self.txt_scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
+        self.lbl_subjudul_aksi = tk.Label(
+            self.frame_header_kanan,
+            text="append: pesanan biasa mengantre di barisan paling belakang.",
+            bg="#ffffff",
+            fg=self.COLOR_TEXT_MUTED,
+            font=("Segoe UI", 9),
+            anchor="w"
+        )
+        self.lbl_subjudul_aksi.pack(anchor="w", pady=(1, 4))
+
+        # 2. Form Parameter Dinamis
+        self.frame_form_dinamis = tk.Frame(self.right_workspace, bg="#ffffff")
+        self.frame_form_dinamis.pack(fill=tk.X, pady=(0, 8))
+
+        # Garis pemisah abu-abu tipis
+        self.sep_line = tk.Frame(self.right_workspace, bg="#e5e7eb", height=1)
+        self.sep_line.pack(fill=tk.X, pady=(2, 8))
+
+        # 3. Area Teks Hasil Utama
+        self.frame_hasil = tk.Frame(self.right_workspace, bg="#ffffff")
+        self.frame_hasil.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
+
+        self.txt_hasil = tk.Text(
+            self.frame_hasil,
+            bg="#ffffff",
+            fg="#111827",
+            font=("Consolas", 9),
+            bd=1,
+            relief="solid",
+            wrap="none"
+        )
+        self.scroll_hasil_y = ttk.Scrollbar(self.frame_hasil, orient="vertical", command=self.txt_hasil.yview)
+        self.scroll_hasil_x = ttk.Scrollbar(self.frame_hasil, orient="horizontal", command=self.txt_hasil.xview)
+        self.txt_hasil.configure(yscrollcommand=self.scroll_hasil_y.set, xscrollcommand=self.scroll_hasil_x.set)
+
+        self.scroll_hasil_y.pack(side=tk.RIGHT, fill=tk.Y)
+        self.scroll_hasil_x.pack(side=tk.BOTTOM, fill=tk.X)
         self.txt_hasil.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # --- PANEL BAWAH: Panel COMMAND & Status Bar ---
-        self.bottom_frame = ttk.Frame(self.root, padding=(8, 4))
-        self.bottom_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        # 4. Bagian COMMAND (Riwayat Eksekusi)
+        self.frame_command = tk.Frame(self.right_workspace, bg="#ffffff")
+        self.frame_command.pack(fill=tk.X, side=tk.BOTTOM)
 
-        self.lbl_command_header = ttk.Label(
-            self.bottom_frame,
-            text="PANEL COMMAND (Log Eksekusi Real-time | Terbaru di Baris Teratas):",
-            font=("Segoe UI", 9, "bold")
+        self.lbl_command_title = tk.Label(
+            self.frame_command,
+            text="COMMAND",
+            bg="#ffffff",
+            fg="#374151",
+            font=("Segoe UI", 9, "bold"),
+            anchor="w"
         )
-        self.lbl_command_header.pack(anchor="w")
+        self.lbl_command_title.pack(anchor="w", pady=(0, 2))
+
+        self.frame_command_box = tk.Frame(self.frame_command, bg="#ffffff")
+        self.frame_command_box.pack(fill=tk.X, pady=(0, 4))
 
         self.txt_command = tk.Text(
-            self.bottom_frame, height=5, wrap="none",
-            font=("Consolas", 9), bg="#1e1e1e", fg="#00ff66", insertbackground="white"
+            self.frame_command_box,
+            height=3,
+            bg="#ffffff",
+            fg="#111827",
+            font=("Consolas", 9),
+            bd=1,
+            relief="solid",
+            wrap="none"
         )
-        self.cmd_scroll = ttk.Scrollbar(self.bottom_frame, orient="vertical", command=self.txt_command.yview)
-        self.txt_command.configure(yscrollcommand=self.cmd_scroll.set)
-        self.cmd_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.txt_command.pack(fill=tk.X, expand=False, pady=(2, 4))
+        self.scroll_cmd = ttk.Scrollbar(self.frame_command_box, orient="vertical", command=self.txt_command.yview)
+        self.txt_command.configure(yscrollcommand=self.scroll_cmd.set)
+        self.scroll_cmd.pack(side=tk.RIGHT, fill=tk.Y)
+        self.txt_command.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        self.status_bar = ttk.Label(
-            self.bottom_frame, text="[Siap]", relief=tk.SUNKEN, anchor="w", padding=(6, 3), font=("Segoe UI", 9)
+        # Lencana status di pojok kiri bawah: 'siap'
+        self.status_container = tk.Frame(self.frame_command, bg="#ffffff")
+        self.status_container.pack(anchor="w", pady=(2, 0))
+
+        self.badge_status = tk.Label(
+            self.status_container,
+            text="siap",
+            bg=self.COLOR_PRIMARY_BTN,
+            fg="#ffffff",
+            font=("Consolas", 9, "bold"),
+            padx=16,
+            pady=3,
+            relief="flat"
         )
-        self.status_bar.pack(fill=tk.X)
+        self.badge_status.pack(side=tk.LEFT)
 
-    def _bangun_tombol_menu(self):
-        # 1. Kelompok DATA
-        grp_data = ttk.LabelFrame(self.scrollable_menu, text="DATA SISTEM", padding=6)
-        grp_data.pack(fill=tk.X, padx=6, pady=4)
-        btn_load = ttk.Button(grp_data, text="LOAD DATA (CSV)", command=self._form_load_data)
-        btn_load.pack(fill=tk.X, pady=2)
-
-        # 2. Kelompok M1 - DATA PESANAN (ARRAY)
-        grp_m1_arr = ttk.LabelFrame(self.scrollable_menu, text="M1 - ARRAY", padding=6)
-        grp_m1_arr.pack(fill=tk.X, padx=6, pady=4)
-        m1_arr_actions = (
-            ("ARRAY - LIHAT PESANAN", "arr_lihat"),
-            ("ARRAY - TAMBAH REGULER", "arr_tambah_reg"),
-            ("ARRAY - TAMBAH PRIORITAS", "arr_tambah_prio"),
-            ("ARRAY - TAMBAH VIP", "arr_tambah_vip"),
-            ("ARRAY - HAPUS PESANAN", "arr_hapus"),
-        )
-        for teks, aksi in m1_arr_actions:
-            btn = ttk.Button(grp_m1_arr, text=teks, command=lambda a=aksi: self._buka_menu(a))
-            btn.pack(fill=tk.X, pady=1)
-
-        # 3. Kelompok M1 - DATA PESANAN (LINKED LIST)
-        grp_m1_ll = ttk.LabelFrame(self.scrollable_menu, text="M1 - LINKEDLIST", padding=6)
-        grp_m1_ll.pack(fill=tk.X, padx=6, pady=4)
-        m1_ll_actions = (
-            ("LINKEDLIST - LIHAT PESANAN", "ll_lihat"),
-            ("LINKEDLIST - TAMBAH REGULER", "ll_tambah_reg"),
-            ("LINKEDLIST - TAMBAH PRIORITAS", "ll_tambah_prio"),
-            ("LINKEDLIST - TAMBAH VIP", "ll_tambah_vip"),
-            ("LINKEDLIST - HAPUS PESANAN", "ll_hapus"),
-        )
-        for teks, aksi in m1_ll_actions:
-            btn = ttk.Button(grp_m1_ll, text=teks, command=lambda a=aksi: self._buka_menu(a))
-            btn.pack(fill=tk.X, pady=1)
-
-        # 4. Kelompok M2 - STACK & QUEUE
-        grp_m2 = ttk.LabelFrame(self.scrollable_menu, text="M2 - STACK & QUEUE", padding=6)
-        grp_m2.pack(fill=tk.X, padx=6, pady=4)
-        m2_actions = (
-            ("STACK - POSTFIX (MESIN KASIR)", "postfix"),
-            ("STACK - UNDO", "undo"),
-            ("STACK - REDO", "redo"),
-            ("QUEUE - ENQUEUE", "enqueue"),
-            ("QUEUE - DEQUEUE NAIF", "dequeue_naif"),
-            ("QUEUE - DEQUEUE CIRCULAR", "dequeue_circular"),
-        )
-        for teks, aksi in m2_actions:
-            btn = ttk.Button(grp_m2, text=teks, command=lambda a=aksi: self._buka_menu(a))
-            btn.pack(fill=tk.X, pady=1)
+    def _sorot_tombol_menu(self, aksi_terpilih):
+        for aksi_id, btn in self.tombol_menu_dict:
+            if aksi_id == aksi_terpilih:
+                btn.config(bg=self.COLOR_BTN_ACTIVE, font=("Segoe UI", 8, "bold"))
+            else:
+                btn.config(bg=self.COLOR_BTN_BG, font=("Segoe UI", 8))
 
     def catat_command(self, nama_perintah, modul, durasi_detik):
         ms = durasi_detik * 1000.0
-        log_line = f"{nama_perintah:<25} -> {modul:<14} {ms:10.4f} ms\n"
-        self.txt_command.insert("1.0", log_line)
-        self._set_status(f"[{modul}] {ms:.4f} ms")
+        # Format sesuai screenshot acuan:
+        # load                      -> M1 - larik       261.06 ms
+        # array_get                 -> M1 - array         0.05 ms
+        line = f"{nama_perintah:<25} -> {modul:<14} {ms:10.2f} ms\n"
+        self.txt_command.insert("1.0", line)
+        self.badge_status.config(text=f"[{modul}] {ms:.2f} ms")
 
-    def _set_status(self, pesan):
-        self.status_bar.config(text=pesan)
+    def _set_status_badge(self, teks):
+        self.badge_status.config(text=teks)
 
     def _tampilkan_hasil(self, teks):
         self.txt_hasil.delete("1.0", tk.END)
         self.txt_hasil.insert(tk.END, teks)
 
     def _bersihkan_form(self):
-        for widget in self.form_container.winfo_children():
-            widget.destroy()
+        for w in self.frame_form_dinamis.winfo_children():
+            w.destroy()
 
     def _pastikan_data_siap(self):
         if self.arr_pesanan is None or self.arr_pesanan.panjang() == 0:
-            messagebox.showwarning("Peringatan", "Data pesanan belum dimuat. Silakan jalankan 'LOAD DATA (CSV)' terlebih dahulu.")
+            messagebox.showwarning(
+                "Peringatan",
+                "Data pesanan belum dimuat ke memori.\nSilakan jalankan menu 'Load' terlebih dahulu."
+            )
             return False
         return True
 
     # =========================================================================
-    # NAVIGASI & FORM DINAMIS
+    # LOGIKA NAVIGASI MENU
     # =========================================================================
 
-    def _buka_menu(self, aksi):
+    def _pilih_menu(self, aksi):
+        self.menu_aktif = aksi
+        self._sorot_tombol_menu(aksi)
         self._bersihkan_form()
 
-        # Mapping form berdasarkan aksi
-        if aksi == "arr_lihat":
-            self.lbl_judul_menu.config(text="M1 - Array: Lihat Pesanan ke-i (O(1))")
-            self._form_lihat(struktur_tipe="array")
-        elif aksi == "ll_lihat":
-            self.lbl_judul_menu.config(text="M1 - LinkList: Lihat Pesanan ke-i (O(n) Telusur)")
-            self._form_lihat(struktur_tipe="linklist")
-        elif aksi == "arr_tambah_reg":
-            self.lbl_judul_menu.config(text="M1 - Array: Tambah Pesanan REGULER di Belakang (O(1) Amortized)")
-            self._form_tambah(struktur_tipe="array", prioritas=3)
-        elif aksi == "ll_tambah_reg":
-            self.lbl_judul_menu.config(text="M1 - LinkList: Tambah Pesanan REGULER di Belakang Tail (O(1))")
-            self._form_tambah(struktur_tipe="linklist", prioritas=3)
-        elif aksi == "arr_tambah_prio":
-            self.lbl_judul_menu.config(text="M1 - Array: Tambah Pesanan PRIORITAS di Tengah n//2 (O(n) Geser)")
-            self._form_tambah(struktur_tipe="array", prioritas=2)
-        elif aksi == "ll_tambah_prio":
-            self.lbl_judul_menu.config(text="M1 - LinkList: Tambah Pesanan PRIORITAS di Tengah n//2 (O(n) Telusur)")
-            self._form_tambah(struktur_tipe="linklist", prioritas=2)
-        elif aksi == "arr_tambah_vip":
-            self.lbl_judul_menu.config(text="M1 - Array: Tambah Pesanan VIP di Depan Indeks 0 (O(n) Geser)")
-            self._form_tambah(struktur_tipe="array", prioritas=1)
-        elif aksi == "ll_tambah_vip":
-            self.lbl_judul_menu.config(text="M1 - LinkList: Tambah Pesanan VIP di Depan Head (O(1))")
-            self._form_tambah(struktur_tipe="linklist", prioritas=1)
-        elif aksi == "arr_hapus":
-            self.lbl_judul_menu.config(text="M1 - Array: Hapus Pesanan ke-i (O(n) Geser Kiri)")
-            self._form_hapus(struktur_tipe="array")
-        elif aksi == "ll_hapus":
-            self.lbl_judul_menu.config(text="M1 - LinkList: Hapus Pesanan ke-i (O(n) Telusur)")
-            self._form_hapus(struktur_tipe="linklist")
-        elif aksi == "postfix":
-            self.lbl_judul_menu.config(text="M2 - Stack: Mesin Kasir Postfix (Infix -> Postfix -> Total)")
-            self._form_postfix()
-        elif aksi == "enqueue":
-            self.lbl_judul_menu.config(text="M2 - Queue: Enqueue Pesanan ke Kedua Antrean (O(1))")
-            self._form_enqueue()
-        elif aksi == "dequeue_naif":
-            self.lbl_judul_menu.config(text="M2 - Queue: Dequeue Antrean Naif (O(n) Geser Loop)")
-            self._form_dequeue(metode="naif")
-        elif aksi == "dequeue_circular":
-            self.lbl_judul_menu.config(text="M2 - Queue: Dequeue Antrean Melingkar / Circular (O(1))")
-            self._form_dequeue(metode="circular")
-        elif aksi == "undo":
-            self.lbl_judul_menu.config(text="M2 - Stack: Undo Aksi Terakhir")
-            self._form_undo_redo(tipe="undo")
-        elif aksi == "redo":
-            self.lbl_judul_menu.config(text="M2 - Stack: Redo Aksi Terakhir")
-            self._form_undo_redo(tipe="redo")
-
-    # =========================================================================
-    # FORM 0: LOAD DATA
-    # =========================================================================
-
-    def _form_load_data(self):
-        self.lbl_judul_menu.config(text="DATA: Muat Berkas CSV ke Array, LinkList & Antrean M2")
-        self._bersihkan_form()
-
-        path_default = os.path.join(BASE_DIR, "data", "pesanan.csv")
-        lbl_info = ttk.Label(self.form_container, text=f"Target Berkas: {path_default}\nMemuat 200.000 baris ke struktur data buatan sendiri.")
-        lbl_info.pack(anchor="w", pady=(0, 6))
-
-        btn = ttk.Button(self.form_container, text="PROSES MEMUAT DATA", command=self._jalankan_load_data)
-        btn.pack(anchor="w")
-
-    def _jalankan_load_data(self):
-        path = os.path.join(BASE_DIR, "data", "pesanan.csv")
-        if not os.path.exists(path):
-            messagebox.showerror("Galat", f"Berkas tidak ditemukan: {path}")
+        # Tangani M3 ke atas: Tampilkan popup khusus
+        if aksi in ("m3_laporan", "m3_cari_laporan", "m3_hash", "m3_cari_oid",
+                    "m5_katalog", "m5_antrean_prio", "m6_peta"):
+            self._tangani_m3_keatas(aksi)
             return
 
-        self._set_status("Sedang memproses pemuatan 200.000 baris...")
+        # DATA
+        if aksi == "load":
+            self._setup_view_load()
+        # M1 - ARRAY
+        elif aksi == "arr_lihat":
+            self._setup_view_lihat(tipe_str="array")
+        elif aksi == "arr_tambah_reg":
+            self._setup_view_tambah(tipe_str="array", prioritas=3)
+        elif aksi == "arr_tambah_prio":
+            self._setup_view_tambah(tipe_str="array", prioritas=2)
+        elif aksi == "arr_tambah_vip":
+            self._setup_view_tambah(tipe_str="array", prioritas=1)
+        elif aksi == "arr_hapus":
+            self._setup_view_hapus(tipe_str="array")
+        # M1 - LINKEDLIST
+        elif aksi == "ll_lihat":
+            self._setup_view_lihat(tipe_str="linklist")
+        elif aksi == "ll_tambah_reg":
+            self._setup_view_tambah(tipe_str="linklist", prioritas=3)
+        elif aksi == "ll_tambah_prio":
+            self._setup_view_tambah(tipe_str="linklist", prioritas=2)
+        elif aksi == "ll_tambah_vip":
+            self._setup_view_tambah(tipe_str="linklist", prioritas=1)
+        elif aksi == "ll_hapus":
+            self._setup_view_hapus(tipe_str="linklist")
+        # M2 - ANTREAN & UNDO
+        elif aksi == "m2_isi_fifo":
+            self._setup_view_isi_fifo()
+        elif aksi == "m2_layani":
+            self._setup_view_layani()
+        elif aksi == "m2_undo":
+            self._setup_view_undo_redo(mode="undo")
+        elif aksi == "m2_redo":
+            self._setup_view_undo_redo(mode="redo")
+        elif aksi == "m2_postfix":
+            self._setup_view_postfix()
+
+    def _tangani_m3_keatas(self, aksi):
+        nama_map = {
+            "m3_laporan": ("Laporan Harian", "M3 - laporan"),
+            "m3_cari_laporan": ("Cari di Laporan", "M3 - laporan"),
+            "m3_hash": ("Bangun Indeks Hash", "M4 - hash"),
+            "m3_cari_oid": ("Cari Pesanan (OID)", "M4 - hash"),
+            "m5_katalog": ("Menu per Rentang Harga", "M5 - bst"),
+            "m5_antrean_prio": ("Isi Antrean Prioritas", "M5 - heap"),
+            "m6_peta": ("Muat Peta & Rute", "M6 - graf"),
+        }
+        judul, modul = nama_map.get(aksi, ("Fitur Lanjutan", "M3+"))
+
+        self.lbl_judul_aksi.config(text=f"{judul}")
+        self.lbl_subjudul_aksi.config(text=f"Fitur {modul} dijadwalkan untuk milestone berikutnya.")
+
+        lbl_info = tk.Label(
+            self.frame_form_dinamis,
+            text=f"Modul '{judul}' belum diaktifkan pada Milestone 1 dan 2.\nSilakan konfirmasi penyelesaian M1 & M2 terlebih dahulu.",
+            bg="#ffffff",
+            fg=self.COLOR_TEXT_MUTED,
+            font=("Segoe UI", 9)
+        )
+        lbl_info.pack(anchor="w", pady=4)
+
+        self.catat_command(aksi, modul, 0.0)
+        self._tampilkan_hasil(
+            f"======================================================================\n"
+            f"                   PEMBERITAHUAN FITUR MILESTONE LANJUTAN              \n"
+            f"======================================================================\n"
+            f"Modul        : {modul}\n"
+            f"Operasi      : {judul}\n"
+            f"Status       : Fitur ini masih dikerjakan (Milestone 3 ke atas).\n"
+            f"Keterangan   : Berkas spesifikasi 'Project' saat ini difokuskan pada\n"
+            f"               penuntasan Milestone 1 (Array vs LL) & Milestone 2 (Stack & Queue).\n"
+            f"======================================================================\n"
+        )
+
+        # Popup sesuai permintaan pengguna:
+        messagebox.showinfo("2EZ4U Food Delivery", "Fitur ini masih dikerjakan")
+
+    # =========================================================================
+    # FORM 1: LOAD DATA
+    # =========================================================================
+
+    def _setup_view_load(self):
+        self.lbl_judul_aksi.config(text="DATA: Muat Berkas CSV ke Memori")
+        self.lbl_subjudul_aksi.config(text="load: membaca 200.000 baris pesanan ke Array dan LinkList.")
+
+        f = tk.Frame(self.frame_form_dinamis, bg="#ffffff")
+        f.pack(fill=tk.X, pady=2)
+
+        lbl_entry = tk.Label(f, text="Path berkas pesanan", bg="#ffffff", font=("Segoe UI", 9, "bold"))
+        lbl_entry.pack(anchor="w")
+
+        sub_f = tk.Frame(f, bg="#ffffff")
+        sub_f.pack(fill=tk.X, pady=(2, 0))
+
+        ent_path = tk.Entry(sub_f, width=40, font=("Segoe UI", 9), relief="solid", bd=1)
+        ent_path.insert(0, "data/pesanan.csv")
+        ent_path.pack(side=tk.LEFT, padx=(0, 16))
+
+        btn_load = tk.Button(
+            sub_f,
+            text="LOAD",
+            bg=self.COLOR_PRIMARY_BTN,
+            fg="#ffffff",
+            font=("Segoe UI", 9, "bold"),
+            relief="flat",
+            padx=20,
+            pady=4,
+            cursor="hand2",
+            command=lambda: self._aksi_load_csv(ent_path.get())
+        )
+        btn_load.pack(side=tk.LEFT)
+
+        lbl_desc = tk.Label(f, text="berkas CSV yang disediakan berisi 200.000 baris pesanan", bg="#ffffff", fg=self.COLOR_TEXT_MUTED, font=("Segoe UI", 8))
+        lbl_desc.pack(anchor="w")
+
+    def _aksi_load_csv(self, rel_path):
+        full_path = os.path.join(BASE_DIR, rel_path)
+        if not os.path.exists(full_path):
+            messagebox.showerror("Galat", f"Berkas tidak ditemukan: {full_path}")
+            return
+
+        self._set_status_badge("memuat...")
         self.root.update_idletasks()
 
-        arr, ll, durasi = muat_pesanan_ke_dua_struktur(path)
+        arr, ll, durasi = muat_pesanan_ke_dua_struktur(full_path)
         self.arr_pesanan = arr
         self.ll_pesanan = ll
 
-        # Muat pesanan ANTRE ke kedua antrean M2
+        # Isi kedua antrean M2 dari pesanan ANTRE
         dimuat_antre = self.layanan_antrean.muat_dari_array(arr)
 
-        self.catat_command("LOAD_CSV_DATA", "m1_pesanan", durasi)
+        self.catat_command("load", "M1 - larik", durasi)
+        self._set_status_badge("siap")
 
-        teks_hasil = (
-            f"======================================================================\n"
-            f"                      SUKSES MEMUAT DATA PESANAN                      \n"
-            f"======================================================================\n"
-            f"Berkas Sumber        : {path}\n"
-            f"Total Baris Dimuat   : {arr.panjang():,} baris\n"
-            f"Waktu Muat Total     : {durasi:.4f} detik ({durasi * 1000:.2f} ms)\n\n"
-            f"[STATUS STRUKTUR DATA M1]\n"
-            f"  - Array Dinamis    : {arr.panjang():,} pesanan (Kapasitas Buffer: {arr.kapasitas:,})\n"
-            f"  - Linked List      : {ll.panjang():,} pesanan (Head: {ll.head.nilai.oid}, Tail: {ll.tail.nilai.oid})\n\n"
-            f"[STATUS STRUKTUR DATA M2 (ANTRE)]\n"
-            f"  - Pesanan Status ANTRE Masuk ke Antrean: {dimuat_antre:,} pesanan\n"
-            f"  - Panjang Antrean Naif     : {self.layanan_antrean.antrean_naif.panjang():,}\n"
-            f"  - Panjang Antrean Circular : {self.layanan_antrean.antrean_circular.panjang():,}\n"
-            f"  - Kapasitas Antrean        : {self.layanan_antrean.antrean_circular.kapasitas:,}\n"
-            f"======================================================================\n"
+        self._tampilkan_hasil(
+            f"Memuat {full_path} ...\n"
+            f"Selesai dalam {durasi * 1000:.2f} ms ({durasi:.4f} detik)\n"
+            f"Jumlah baris dimuat        : {arr.panjang():,} baris\n"
+            f"Kapasitas buffer Array     : {arr.kapasitas:,}\n"
+            f"Head Linked List           : {ll.head.nilai.oid} ({ll.head.nilai.pelanggan})\n"
+            f"Tail Linked List           : {ll.tail.nilai.oid} ({ll.tail.nilai.pelanggan})\n\n"
+            f"[STATUS ANTREAN M2]\n"
+            f"Pesanan status ANTRE masuk : {dimuat_antre:,} pesanan\n"
+            f"Panjang Antrean Naif       : {self.layanan_antrean.antrean_naif.panjang():,}\n"
+            f"Panjang Antrean Melingkar  : {self.layanan_antrean.antrean_circular.panjang():,}\n"
         )
-        self._tampilkan_hasil(teks_hasil)
 
     # =========================================================================
-    # FORM M1: LIHAT, TAMBAH, HAPUS
+    # FORM M1: LIHAT PESANAN
     # =========================================================================
 
-    def _form_lihat(self, struktur_tipe):
-        f = ttk.Frame(self.form_container)
+    def _setup_view_lihat(self, tipe_str):
+        if tipe_str == "array":
+            self.lbl_judul_aksi.config(text="Array: lihat pesanan ke-i")
+            self.lbl_subjudul_aksi.config(text="get: akses langsung berdasarkan indeks ke-i (O(1)).")
+            cmd_nama = "array_get"
+            modul_tag = "M1 - array"
+        else:
+            self.lbl_judul_aksi.config(text="LinkList: lihat pesanan ke-i")
+            self.lbl_subjudul_aksi.config(text="get: menelusuri rantai simpul dari head sampai indeks ke-i (O(n)).")
+            cmd_nama = "ll_get"
+            modul_tag = "M1 - linklist"
+
+        f = tk.Frame(self.frame_form_dinamis, bg="#ffffff")
         f.pack(fill=tk.X, pady=2)
 
-        ttk.Label(f, text="Indeks Pesanan (0-indexed):").pack(side=tk.LEFT, padx=(0, 6))
-        ent_idx = ttk.Entry(f, width=12)
-        ent_idx.insert(0, "0")
-        ent_idx.pack(side=tk.LEFT, padx=(0, 10))
+        lbl = tk.Label(f, text="Indeks pesanan", bg="#ffffff", font=("Segoe UI", 9, "bold"))
+        lbl.pack(anchor="w")
 
-        btn = ttk.Button(
-            f, text="LIHAT PESANAN",
-            command=lambda: self._jalankan_lihat(struktur_tipe, ent_idx.get())
+        sub_f = tk.Frame(f, bg="#ffffff")
+        sub_f.pack(fill=tk.X, pady=(2, 0))
+
+        ent_idx = tk.Entry(sub_f, width=16, font=("Segoe UI", 9), relief="solid", bd=1)
+        ent_idx.insert(0, "0")
+        ent_idx.pack(side=tk.LEFT, padx=(0, 16))
+
+        btn = tk.Button(
+            sub_f,
+            text="LIHAT",
+            bg=self.COLOR_PRIMARY_BTN,
+            fg="#ffffff",
+            font=("Segoe UI", 9, "bold"),
+            relief="flat",
+            padx=20,
+            pady=4,
+            cursor="hand2",
+            command=lambda: self._aksi_lihat(tipe_str, ent_idx.get(), cmd_nama, modul_tag)
         )
         btn.pack(side=tk.LEFT)
 
-    def _jalankan_lihat(self, struktur_tipe, str_idx):
+        lbl_hint = tk.Label(f, text="indeks pesanan yang ingin dilihat (0 sampai n-1)", bg="#ffffff", fg=self.COLOR_TEXT_MUTED, font=("Segoe UI", 8))
+        lbl_hint.pack(anchor="w")
+
+    def _aksi_lihat(self, tipe_str, str_idx, cmd_nama, modul_tag):
         if not self._pastikan_data_siap():
             return
         try:
@@ -332,158 +534,437 @@ class AppUI:
             messagebox.showerror("Galat", "Indeks harus berupa bilangan bulat.")
             return
 
-        struktur = self.arr_pesanan if struktur_tipe == "array" else self.ll_pesanan
-        nama_cmd = "ARRAY_LIHAT" if struktur_tipe == "array" else "LL_LIHAT"
-        label_metrik = "Jumlah Geseran" if struktur_tipe == "array" else "Langkah Telusur"
-
+        struktur = self.arr_pesanan if tipe_str == "array" else self.ll_pesanan
         hasil, durasi, metrik = struktur.lihat(idx)
-        self.catat_command(nama_cmd, "m1_pesanan", durasi)
+        self.catat_command(cmd_nama, modul_tag, durasi)
 
         if hasil is None:
-            self._tampilkan_hasil(f"[GALAT] Indeks {idx} berada di luar jangkauan (Ukuran struktur: {struktur.panjang():,}).")
+            self._tampilkan_hasil(f"[GALAT] Indeks {idx} berada di luar jangkauan (Ukuran total: {struktur.panjang():,}).")
             return
 
-        teks = (
-            f"=== HASIL OPERASI LIHAT PESANAN ({struktur_tipe.upper()}) ===\n"
-            f"Indeks Dicari    : {idx}\n"
-            f"Waktu Operasi    : {durasi * 1000:.6f} ms ({durasi:.8f} s)\n"
-            f"{label_metrik:<17}: {metrik:,}\n\n"
-            f"[DETAIL PESANAN]\n{hasil.ringkasan()}\n"
+        label_metrik = "Jumlah geseran" if tipe_str == "array" else "Langkah telusur"
+        self._tampilkan_hasil(
+            f"=== HASIL OPERASI LIHAT PESANAN ({tipe_str.upper()}) ===\n"
+            f"Indeks         : {idx}\n"
+            f"Waktu          : {durasi * 1000:.4f} ms ({durasi:.6f} s)\n"
+            f"{label_metrik:<15}: {metrik:,}\n\n"
+            f"Detail Pesanan :\n{hasil.ringkasan()}\n"
         )
-        self._tampilkan_hasil(teks)
 
-    def _form_tambah(self, struktur_tipe, prioritas):
-        f1 = ttk.Frame(self.form_container)
-        f1.pack(fill=tk.X, pady=2)
+    # =========================================================================
+    # FORM M1: TAMBAH PESANAN (REGULER, PRIORITAS, VIP)
+    # =========================================================================
 
-        prio_label = "VIP (Indeks 0)" if prioritas == 1 else ("PRIORITAS (Indeks n//2)" if prioritas == 2 else "REGULER (Belakang)")
-
-        ttk.Label(f1, text="Pelanggan:").pack(side=tk.LEFT, padx=(0, 4))
-        ent_nama = ttk.Entry(f1, width=20)
-        ent_nama.insert(0, f"Pelanggan Baru {self.counter_id_baru}")
-        ent_nama.pack(side=tk.LEFT, padx=(0, 10))
-
-        ttk.Label(f1, text="Menu:").pack(side=tk.LEFT, padx=(0, 4))
-        ent_menu = ttk.Entry(f1, width=18)
-        ent_menu.insert(0, "nasi-goreng-spesial")
-        ent_menu.pack(side=tk.LEFT, padx=(0, 10))
-
-        ttk.Label(f1, text="Harga (Rp):").pack(side=tk.LEFT, padx=(0, 4))
-        ent_harga = ttk.Entry(f1, width=10)
-        ent_harga.insert(0, "25000")
-        ent_harga.pack(side=tk.LEFT, padx=(0, 10))
-
-        btn = ttk.Button(
-            f1, text=f"TAMBAH {prio_label}",
-            command=lambda: self._jalankan_tambah(struktur_tipe, prioritas, ent_nama.get(), ent_menu.get(), ent_harga.get())
-        )
-        btn.pack(side=tk.LEFT)
-
-    def _jalankan_tambah(self, struktur_tipe, prioritas, nama, menu, harga_str):
-        if not self._pastikan_data_siap():
-            return
-        try:
-            harga = int(harga_str)
-        except ValueError:
-            messagebox.showerror("Galat", "Harga harus berupa angka.")
-            return
-
-        oid = f"O-BARU-{self.counter_id_baru:04d}"
-        self.counter_id_baru += 1
-        pesanan = Pesanan(oid, nama, "kafe-teknik", menu, harga, prioritas, int(time.time()), None, "ANTRE")
-
-        struktur = self.arr_pesanan if struktur_tipe == "array" else self.ll_pesanan
-        prio_str = "VIP" if prioritas == 1 else ("PRIORITAS" if prioritas == 2 else "REGULER")
-        cmd_name = f"{'ARRAY' if struktur_tipe == 'array' else 'LL'}_TAMBAH_{prio_str}"
-        label_metrik = "Jumlah Geseran" if struktur_tipe == "array" else "Langkah Telusur"
-
-        if prioritas == 1:
-            hasil, durasi, metrik = struktur.tambah_vip(pesanan)
-            posisi_str = "Indeks 0 (Paling Depan)"
-        elif prioritas == 2:
-            hasil, durasi, metrik = struktur.tambah_prioritas(pesanan)
-            posisi_str = f"Indeks {struktur.panjang() // 2} (Tengah)"
+    def _setup_view_tambah(self, tipe_str, prioritas):
+        prio_label = "REGULER" if prioritas == 3 else ("PRIORITAS" if prioritas == 2 else "VIP")
+        if tipe_str == "array":
+            if prioritas == 3:
+                self.lbl_judul_aksi.config(text="Array: pesanan REGULER, masuk paling belakang")
+                self.lbl_subjudul_aksi.config(text="append: pesanan biasa mengantre di barisan paling belakang.")
+                cmd_nama = "array_insert_reguler"
+            elif prioritas == 2:
+                self.lbl_judul_aksi.config(text="Array: pesanan PRIORITAS, masuk di tengah")
+                self.lbl_subjudul_aksi.config(text="insert: pesanan prioritas disisipkan di indeks n // 2.")
+                cmd_nama = "array_insert_prioritas"
+            else:
+                self.lbl_judul_aksi.config(text="Array: pesanan VIP, masuk paling depan")
+                self.lbl_subjudul_aksi.config(text="insert: pesanan VIP disisipkan di indeks 0 paling depan.")
+                cmd_nama = "array_insert_vip"
+            modul_tag = "M1 - array"
         else:
-            hasil, durasi, metrik = struktur.tambah_reguler(pesanan)
-            posisi_str = f"Indeks {struktur.panjang() - 1} (Paling Belakang)"
+            if prioritas == 3:
+                self.lbl_judul_aksi.config(text="LinkList: pesanan REGULER, masuk paling belakang")
+                self.lbl_subjudul_aksi.config(text="append: menambahkan simpul baru di ujung tail (O(1)).")
+                cmd_nama = "ll_insert_reguler"
+            elif prioritas == 2:
+                self.lbl_judul_aksi.config(text="LinkList: pesanan PRIORITAS, masuk di tengah")
+                self.lbl_subjudul_aksi.config(text="insert: menelusuri hingga simpul n // 2 lalu menyisipkan (O(n)).")
+                cmd_nama = "ll_insert_prioritas"
+            else:
+                self.lbl_judul_aksi.config(text="LinkList: pesanan VIP, masuk paling depan")
+                self.lbl_subjudul_aksi.config(text="tambah_depan: simpul baru disisipkan di head (O(1)).")
+                cmd_nama = "ll_insert_vip"
+            modul_tag = "M1 - linklist"
 
-        self.catat_command(cmd_name, "m1_pesanan", durasi)
-
-        teks = (
-            f"=== HASIL OPERASI TAMBAH PESANAN ({struktur_tipe.upper()}) ===\n"
-            f"Jenis Prioritas  : {prioritas} ({prio_str})\n"
-            f"Posisi Sisip     : {posisi_str}\n"
-            f"Total Elemen Baru: {struktur.panjang():,} elemen\n"
-            f"Waktu Operasi    : {durasi * 1000:.6f} ms ({durasi:.8f} s)\n"
-            f"{label_metrik:<17}: {metrik:,}\n\n"
-            f"[DETAIL PESANAN DISISIPKAN]\n{pesanan.ringkasan()}\n"
-        )
-        self._tampilkan_hasil(teks)
-
-    def _form_hapus(self, struktur_tipe):
-        f = ttk.Frame(self.form_container)
+        f = tk.Frame(self.frame_form_dinamis, bg="#ffffff")
         f.pack(fill=tk.X, pady=2)
 
-        ttk.Label(f, text="Indeks yang Ingin Dihapus:").pack(side=tk.LEFT, padx=(0, 6))
-        ent_idx = ttk.Entry(f, width=12)
-        ent_idx.insert(0, "0")
-        ent_idx.pack(side=tk.LEFT, padx=(0, 10))
+        lbl = tk.Label(f, text="Nama pelanggan", bg="#ffffff", font=("Segoe UI", 9, "bold"))
+        lbl.pack(anchor="w")
 
-        btn = ttk.Button(
-            f, text="HAPUS PESANAN",
-            command=lambda: self._jalankan_hapus(struktur_tipe, ent_idx.get())
+        sub_f = tk.Frame(f, bg="#ffffff")
+        sub_f.pack(fill=tk.X, pady=(2, 0))
+
+        ent_nama = tk.Entry(sub_f, width=28, font=("Segoe UI", 9), relief="solid", bd=1)
+        ent_nama.insert(0, f"Pelanggan Baru {self.counter_id_baru}")
+        ent_nama.pack(side=tk.LEFT, padx=(0, 16))
+
+        btn = tk.Button(
+            sub_f,
+            text="TAMBAH",
+            bg=self.COLOR_PRIMARY_BTN,
+            fg="#ffffff",
+            font=("Segoe UI", 9, "bold"),
+            relief="flat",
+            padx=20,
+            pady=4,
+            cursor="hand2",
+            command=lambda: self._aksi_tambah(tipe_str, prioritas, ent_nama.get(), cmd_nama, modul_tag)
         )
         btn.pack(side=tk.LEFT)
 
-    def _jalankan_hapus(self, struktur_tipe, str_idx):
+        lbl_hint = tk.Label(f, text="nama untuk pesanan yang akan dibuat", bg="#ffffff", fg=self.COLOR_TEXT_MUTED, font=("Segoe UI", 8))
+        lbl_hint.pack(anchor="w")
+
+    def _aksi_tambah(self, tipe_str, prioritas, nama, cmd_nama, modul_tag):
+        if not self._pastikan_data_siap():
+            return
+
+        oid = f"O-ADD-{self.counter_id_baru:04d}"
+        self.counter_id_baru += 1
+        pesanan = Pesanan(oid, nama, "kafe-teknik", "mie-goreng-spesial", 20000, prioritas, int(time.time()), None, "ANTRE")
+
+        struktur = self.arr_pesanan if tipe_str == "array" else self.ll_pesanan
+
+        if prioritas == 1:
+            _, durasi, metrik = struktur.tambah_vip(pesanan)
+            posisi_str = "Indeks 0 (Paling Depan)"
+        elif prioritas == 2:
+            _, durasi, metrik = struktur.tambah_prioritas(pesanan)
+            posisi_str = f"Indeks {struktur.panjang() // 2} (Tengah)"
+        else:
+            _, durasi, metrik = struktur.tambah_reguler(pesanan)
+            posisi_str = f"Indeks {struktur.panjang() - 1} (Paling Belakang)"
+
+        self.catat_command(cmd_nama, modul_tag, durasi)
+
+        label_metrik = "Jumlah geseran" if tipe_str == "array" else "Langkah telusur"
+        self._tampilkan_hasil(
+            f"=== TAMBAH PESANAN ({tipe_str.upper()}) ===\n"
+            f"Tipe Prioritas : {prioritas} ({'VIP' if prioritas == 1 else ('PRIORITAS' if prioritas == 2 else 'REGULER')})\n"
+            f"Posisi Sisip   : {posisi_str}\n"
+            f"Total Elemen   : {struktur.panjang():,} pesanan\n"
+            f"Waktu          : {durasi * 1000:.4f} ms ({durasi:.6f} s)\n"
+            f"{label_metrik:<15}: {metrik:,}\n\n"
+            f"Detail Pesanan :\n{pesanan.ringkasan()}\n"
+        )
+
+    # =========================================================================
+    # FORM M1: HAPUS PESANAN
+    # =========================================================================
+
+    def _setup_view_hapus(self, tipe_str):
+        if tipe_str == "array":
+            self.lbl_judul_aksi.config(text="Array: hapus pesanan ke-i")
+            self.lbl_subjudul_aksi.config(text="hapus: menghapus pesanan pada indeks i dan menggeser sisa ke kiri.")
+            cmd_nama = "array_hapus"
+            modul_tag = "M1 - array"
+        else:
+            self.lbl_judul_aksi.config(text="LinkList: hapus pesanan ke-i")
+            self.lbl_subjudul_aksi.config(text="hapus: menelusuri simpul ke-i lalu menghubungkan ulang pointer (O(n)).")
+            cmd_nama = "ll_hapus"
+            modul_tag = "M1 - linklist"
+
+        f = tk.Frame(self.frame_form_dinamis, bg="#ffffff")
+        f.pack(fill=tk.X, pady=2)
+
+        lbl = tk.Label(f, text="Indeks pesanan yang akan dihapus", bg="#ffffff", font=("Segoe UI", 9, "bold"))
+        lbl.pack(anchor="w")
+
+        sub_f = tk.Frame(f, bg="#ffffff")
+        sub_f.pack(fill=tk.X, pady=(2, 0))
+
+        ent_idx = tk.Entry(sub_f, width=16, font=("Segoe UI", 9), relief="solid", bd=1)
+        ent_idx.insert(0, "0")
+        ent_idx.pack(side=tk.LEFT, padx=(0, 16))
+
+        btn = tk.Button(
+            sub_f,
+            text="HAPUS",
+            bg=self.COLOR_PRIMARY_BTN,
+            fg="#ffffff",
+            font=("Segoe UI", 9, "bold"),
+            relief="flat",
+            padx=20,
+            pady=4,
+            cursor="hand2",
+            command=lambda: self._aksi_hapus(tipe_str, ent_idx.get(), cmd_nama, modul_tag)
+        )
+        btn.pack(side=tk.LEFT)
+
+        lbl_hint = tk.Label(f, text="indeks pesanan yang ingin dihapus (0 sampai n-1)", bg="#ffffff", fg=self.COLOR_TEXT_MUTED, font=("Segoe UI", 8))
+        lbl_hint.pack(anchor="w")
+
+    def _aksi_hapus(self, tipe_str, str_idx, cmd_nama, modul_tag):
         if not self._pastikan_data_siap():
             return
         try:
             idx = int(str_idx)
         except ValueError:
-            messagebox.showerror("Galat", "Indeks harus bilangan bulat.")
+            messagebox.showerror("Galat", "Indeks harus berupa bilangan bulat.")
             return
 
-        struktur = self.arr_pesanan if struktur_tipe == "array" else self.ll_pesanan
-        cmd_name = "ARRAY_HAPUS" if struktur_tipe == "array" else "LL_HAPUS"
-        label_metrik = "Jumlah Geseran" if struktur_tipe == "array" else "Langkah Telusur"
-
+        struktur = self.arr_pesanan if tipe_str == "array" else self.ll_pesanan
         terhapus, durasi, metrik = struktur.hapus_dengan_metrik(idx)
-        self.catat_command(cmd_name, "m1_pesanan", durasi)
+        self.catat_command(cmd_nama, modul_tag, durasi)
 
         if terhapus is None:
-            self._tampilkan_hasil(f"[GALAT] Gagal menghapus. Indeks {idx} tidak valid (Ukuran: {struktur.panjang():,}).")
+            self._tampilkan_hasil(f"[GALAT] Gagal menghapus. Indeks {idx} tidak valid (Total elemen: {struktur.panjang():,}).")
             return
 
-        teks = (
-            f"=== HASIL OPERASI HAPUS PESANAN ({struktur_tipe.upper()}) ===\n"
-            f"Indeks Dihapus   : {idx}\n"
-            f"Sisa Elemen      : {struktur.panjang():,} elemen\n"
-            f"Waktu Operasi    : {durasi * 1000:.6f} ms ({durasi:.8f} s)\n"
-            f"{label_metrik:<17}: {metrik:,}\n\n"
-            f"[DETAIL PESANAN YANG DIHAPUS]\n{terhapus.ringkasan()}\n"
+        label_metrik = "Jumlah geseran" if tipe_str == "array" else "Langkah telusur"
+        self._tampilkan_hasil(
+            f"=== HAPUS PESANAN ({tipe_str.upper()}) ===\n"
+            f"Indeks Terhapus: {idx}\n"
+            f"Sisa Elemen    : {struktur.panjang():,} pesanan\n"
+            f"Waktu          : {durasi * 1000:.4f} ms ({durasi:.6f} s)\n"
+            f"{label_metrik:<15}: {metrik:,}\n\n"
+            f"Pesanan Dihapus:\n{terhapus.ringkasan()}\n"
         )
-        self._tampilkan_hasil(teks)
 
     # =========================================================================
-    # FORM M2: POSTFIX MESIN KASIR
+    # FORM M2: ANTREAN (FIFO, LAYANI, UNDO, REDO, POSTFIX)
     # =========================================================================
 
-    def _form_postfix(self):
-        f = ttk.Frame(self.form_container)
+    def _setup_view_isi_fifo(self):
+        self.lbl_judul_aksi.config(text="Antrean: isi pesanan berstatus ANTRE ke antrean FIFO")
+        self.lbl_subjudul_aksi.config(text="enqueue: memasukkan pesanan ke kedua antrean (Naif & Circular).")
+
+        f = tk.Frame(self.frame_form_dinamis, bg="#ffffff")
         f.pack(fill=tk.X, pady=2)
 
-        ttk.Label(f, text="Ekspresi Kasir (Infix):").pack(side=tk.LEFT, padx=(0, 6))
-        ent_exp = ttk.Entry(f, width=45)
-        ent_exp.insert(0, "( 3 * 12000 ) + ( 2 * 8500 ) - 5000")
-        ent_exp.pack(side=tk.LEFT, padx=(0, 10))
+        lbl = tk.Label(f, text="Nama pelanggan untuk pesanan baru", bg="#ffffff", font=("Segoe UI", 9, "bold"))
+        lbl.pack(anchor="w")
 
-        btn = ttk.Button(f, text="HITUNG TOTAL KASIR", command=lambda: self._jalankan_postfix(ent_exp.get()))
+        sub_f = tk.Frame(f, bg="#ffffff")
+        sub_f.pack(fill=tk.X, pady=(2, 0))
+
+        ent_nama = tk.Entry(sub_f, width=28, font=("Segoe UI", 9), relief="solid", bd=1)
+        ent_nama.insert(0, f"Customer FIFO {self.counter_id_baru}")
+        ent_nama.pack(side=tk.LEFT, padx=(0, 16))
+
+        btn = tk.Button(
+            sub_f,
+            text="ENQUEUE",
+            bg=self.COLOR_PRIMARY_BTN,
+            fg="#ffffff",
+            font=("Segoe UI", 9, "bold"),
+            relief="flat",
+            padx=18,
+            pady=4,
+            cursor="hand2",
+            command=lambda: self._aksi_enqueue_fifo(ent_nama.get())
+        )
         btn.pack(side=tk.LEFT)
 
-    def _jalankan_postfix(self, ekspresi):
+        lbl_hint = tk.Label(f, text="pesanan baru berstatus ANTRE akan dimasukkan ke antrean", bg="#ffffff", fg=self.COLOR_TEXT_MUTED, font=("Segoe UI", 8))
+        lbl_hint.pack(anchor="w")
+
+    def _aksi_enqueue_fifo(self, nama):
+        oid = f"O-FIFO-{self.counter_id_baru:04d}"
+        self.counter_id_baru += 1
+        pesanan = Pesanan(oid, nama, "kedai-kopi", "roti-bakar", 12000, 3, int(time.time()), None, "ANTRE")
+
+        _, durasi = self.layanan_antrean.enqueue(pesanan)
+        self.catat_command("fifo_enqueue", "M2 - antrean", durasi)
+
+        stats = self.layanan_antrean.stats()
+        self._tampilkan_hasil(
+            f"=== ENQUEUE PESANAN KE ANTREAN FIFO ===\n"
+            f"Waktu Eksekusi           : {durasi * 1000:.4f} ms\n"
+            f"Panjang Antrean Naif     : {stats.queue_len_naif:,}\n"
+            f"Panjang Antrean Circular : {stats.queue_len_circular:,}\n"
+            f"Kedalaman Tumpukan Undo  : {stats.undo_depth}\n"
+            f"Kedalaman Tumpukan Redo  : {stats.redo_depth} (dikosongkan otomatis)\n\n"
+            f"Detail Pesanan Masuk:\n{pesanan.ringkasan()}\n"
+        )
+
+    def _setup_view_layani(self):
+        self.lbl_judul_aksi.config(text="Antrean: layani pesanan berikutnya (Dequeue)")
+        self.lbl_subjudul_aksi.config(text="dequeue: melayani pesanan dari antrean depan (bandingkan Naif vs Circular).")
+
+        f = tk.Frame(self.frame_form_dinamis, bg="#ffffff")
+        f.pack(fill=tk.X, pady=2)
+
+        lbl = tk.Label(f, text="Jumlah pesanan yang dilayani", bg="#ffffff", font=("Segoe UI", 9, "bold"))
+        lbl.pack(anchor="w")
+
+        sub_f = tk.Frame(f, bg="#ffffff")
+        sub_f.pack(fill=tk.X, pady=(2, 0))
+
+        ent_n = tk.Entry(sub_f, width=12, font=("Segoe UI", 9), relief="solid", bd=1)
+        ent_n.insert(0, "1")
+        ent_n.pack(side=tk.LEFT, padx=(0, 12))
+
+        btn_circ = tk.Button(
+            sub_f,
+            text="LAYANI (CIRCULAR O(1))",
+            bg=self.COLOR_PRIMARY_BTN,
+            fg="#ffffff",
+            font=("Segoe UI", 8, "bold"),
+            relief="flat",
+            padx=12,
+            pady=4,
+            cursor="hand2",
+            command=lambda: self._aksi_layani(ent_n.get(), mode="circular")
+        )
+        btn_circ.pack(side=tk.LEFT, padx=(0, 8))
+
+        btn_naif = tk.Button(
+            sub_f,
+            text="LAYANI (NAIF O(N))",
+            bg="#4b5563",
+            fg="#ffffff",
+            font=("Segoe UI", 8, "bold"),
+            relief="flat",
+            padx=12,
+            pady=4,
+            cursor="hand2",
+            command=lambda: self._aksi_layani(ent_n.get(), mode="naif")
+        )
+        btn_naif.pack(side=tk.LEFT)
+
+        lbl_hint = tk.Label(f, text="masukkan jumlah pesanan untuk membandingkan efisiensi pergeseran", bg="#ffffff", fg=self.COLOR_TEXT_MUTED, font=("Segoe UI", 8))
+        lbl_hint.pack(anchor="w")
+
+    def _aksi_layani(self, str_n, mode):
+        try:
+            n = int(str_n)
+            if n <= 0:
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Galat", "Jumlah pesanan harus berupa bilangan bulat positif.")
+            return
+
+        if self.layanan_antrean.antrean_circular.is_empty():
+            messagebox.showwarning("Peringatan", "Antrean kosong. Tidak ada pesanan untuk dilayani.")
+            return
+
+        if mode == "circular":
+            daftar_keluar, durasi, geseran = self.layanan_antrean.dequeue_circular(n)
+            cmd_nama = "dequeue_circular"
+        else:
+            daftar_keluar, durasi, geseran = self.layanan_antrean.dequeue_naif(n)
+            cmd_nama = "dequeue_naif"
+
+        self.catat_command(cmd_nama, "M2 - antrean", durasi)
+        stats = self.layanan_antrean.stats()
+
+        hasil_teks = (
+            f"=== LAYANI PESANAN ({mode.upper()}) ===\n"
+            f"Jumlah Dilayani          : {daftar_keluar.panjang():,} pesanan\n"
+            f"Waktu Eksekusi           : {durasi * 1000:.4f} ms ({durasi:.6f} s)\n"
+            f"Elemen Digeser Saat Ini  : {geseran:,}\n"
+            f"Total Geseran Kum. Naif  : {stats.total_geseran_naif:,}\n"
+            f"Total Geseran Circular   : {stats.total_geseran_circular:,}\n"
+            f"Sisa Antrean             : {stats.queue_len_circular:,}\n"
+            f"Kedalaman Undo           : {stats.undo_depth}\n\n"
+            f"Daftar Pesanan yang Dilayani:\n"
+        )
+
+        limit = min(8, daftar_keluar.panjang())
+        for i in range(limit):
+            p = daftar_keluar.get(i)
+            hasil_teks += f"  [{i+1}] {p.oid} | {p.pelanggan:<20} | {p.menu:<16} | Rp {p.harga:,}\n"
+        if daftar_keluar.panjang() > limit:
+            hasil_teks += f"  ... dan {daftar_keluar.panjang() - limit} pesanan lainnya.\n"
+
+        self._tampilkan_hasil(hasil_teks)
+
+    def _setup_view_undo_redo(self, mode):
+        if mode == "undo":
+            self.lbl_judul_aksi.config(text="Tumpukan: Undo aksi antrean terakhir")
+            self.lbl_subjudul_aksi.config(text="undo: membatalkan aksi enqueue (buang belakang) atau dequeue (kembalikan ke depan).")
+            btn_text = "UNDO"
+        else:
+            self.lbl_judul_aksi.config(text="Tumpukan: Redo aksi yang baru dibatalkan")
+            self.lbl_subjudul_aksi.config(text="redo: mengulang kembali aksi yang baru dibatalkan.")
+            btn_text = "REDO"
+
+        f = tk.Frame(self.frame_form_dinamis, bg="#ffffff")
+        f.pack(fill=tk.X, pady=2)
+
+        lbl = tk.Label(f, text=f"Tindakan {btn_text}", bg="#ffffff", font=("Segoe UI", 9, "bold"))
+        lbl.pack(anchor="w")
+
+        sub_f = tk.Frame(f, bg="#ffffff")
+        sub_f.pack(fill=tk.X, pady=(2, 0))
+
+        btn = tk.Button(
+            sub_f,
+            text=btn_text,
+            bg=self.COLOR_PRIMARY_BTN,
+            fg="#ffffff",
+            font=("Segoe UI", 9, "bold"),
+            relief="flat",
+            padx=20,
+            pady=4,
+            cursor="hand2",
+            command=lambda: self._aksi_undo_redo(mode)
+        )
+        btn.pack(side=tk.LEFT)
+
+        lbl_hint = tk.Label(f, text=f"klik untuk menjalankan operasi {btn_text.lower()} pada tumpukan LIFO", bg="#ffffff", fg=self.COLOR_TEXT_MUTED, font=("Segoe UI", 8))
+        lbl_hint.pack(anchor="w")
+
+    def _aksi_undo_redo(self, mode):
+        if mode == "undo":
+            sukses, pesan, durasi = self.layanan_antrean.undo_last()
+            cmd_nama = "undo_last"
+        else:
+            sukses, pesan, durasi = self.layanan_antrean.redo_last()
+            cmd_nama = "redo_last"
+
+        self.catat_command(cmd_nama, "M2 - stack", durasi)
+        stats = self.layanan_antrean.stats()
+
+        self._tampilkan_hasil(
+            f"=== OPERASI {mode.upper()} ===\n"
+            f"Status                   : {'BERHASIL' if sukses else 'GAGAL / KOSONG'}\n"
+            f"Keterangan               : {pesan}\n"
+            f"Waktu Operasi            : {durasi * 1000:.4f} ms\n"
+            f"Panjang Antrean Terkini  : {stats.queue_len_circular:,}\n"
+            f"Kedalaman Tumpukan Undo  : {stats.undo_depth}\n"
+            f"Kedalaman Tumpukan Redo  : {stats.redo_depth}\n"
+        )
+
+    def _setup_view_postfix(self):
+        self.lbl_judul_aksi.config(text="Kasir: evaluasi ekspresi harga kasir (Infix -> Postfix)")
+        self.lbl_subjudul_aksi.config(text="postfix: menghitung total harga pesanan menggunakan tumpukan operator dan angka.")
+
+        f = tk.Frame(self.frame_form_dinamis, bg="#ffffff")
+        f.pack(fill=tk.X, pady=2)
+
+        lbl = tk.Label(f, text="Ekspresi kasir (infix)", bg="#ffffff", font=("Segoe UI", 9, "bold"))
+        lbl.pack(anchor="w")
+
+        sub_f = tk.Frame(f, bg="#ffffff")
+        sub_f.pack(fill=tk.X, pady=(2, 0))
+
+        ent_exp = tk.Entry(sub_f, width=42, font=("Segoe UI", 9), relief="solid", bd=1)
+        ent_exp.insert(0, "( 3 * 12000 ) + ( 2 * 8500 ) - 5000")
+        ent_exp.pack(side=tk.LEFT, padx=(0, 16))
+
+        btn = tk.Button(
+            sub_f,
+            text="HITUNG",
+            bg=self.COLOR_PRIMARY_BTN,
+            fg="#ffffff",
+            font=("Segoe UI", 9, "bold"),
+            relief="flat",
+            padx=20,
+            pady=4,
+            cursor="hand2",
+            command=lambda: self._aksi_hitung_kasir(ent_exp.get())
+        )
+        btn.pack(side=tk.LEFT)
+
+        lbl_hint = tk.Label(f, text="contoh: ( 3 * 12000 ) + ( 2 * 8500 ) - 5000", bg="#ffffff", fg=self.COLOR_TEXT_MUTED, font=("Segoe UI", 8))
+        lbl_hint.pack(anchor="w")
+
+    def _aksi_hitung_kasir(self, ekspresi):
         if not ekspresi.strip():
-            messagebox.showerror("Galat", "Ekspresi matematika tidak boleh kosong.")
+            messagebox.showerror("Galat", "Ekspresi kasir tidak boleh kosong.")
             return
 
         t_awal = time.perf_counter()
@@ -491,195 +972,32 @@ class AppUI:
             str_postfix, total_int, str_rp, tabel_langkah = proses_kasir(ekspresi)
         except Exception as e:
             durasi = time.perf_counter() - t_awal
-            self.catat_command("POSTFIX_KASIR_GALAT", "m2_stack", durasi)
+            self.catat_command("postfix_galat", "M2 - stack", durasi)
             self._tampilkan_hasil(f"[GALAT EVALUASI KASIR]\n{str(e)}")
             return
 
         durasi = time.perf_counter() - t_awal
-        self.catat_command("POSTFIX_KASIR", "m2_stack", durasi)
+        self.catat_command("postfix_kasir", "M2 - stack", durasi)
 
-        garis = "=" * 105
         hasil_teks = (
-            f"{garis}\n"
-            f"                          MESIN KASIR 2EZ4U - POSTFIX ENGINE\n"
-            f"{garis}\n"
-            f"Ekspresi Infix   : {ekspresi}\n"
-            f"Bentuk Postfix   : {str_postfix}\n"
-            f"Waktu Evaluasi   : {durasi * 1000:.4f} ms\n"
-            f"{garis}\n"
-            f"{'Langkah':<8} | {'Token':<8} | {'Tindakan':<46} | {'Isi Stack':<18} | {'Output':<18}\n"
-            f"{'-'*8}-+-{'-'*8}-+-{'-'*46}-+-{'-'*18}-+-{'-'*18}\n"
+            f"Ekspresi Infix : {ekspresi}\n"
+            f"Bentuk Postfix : {str_postfix}\n"
+            f"Waktu Evaluasi : {durasi * 1000:.4f} ms\n"
+            f"--------------------------------------------------------------------------------------------------\n"
+            f"{'Langkah':<8} | {'Token':<8} | {'Tindakan':<46} | {'Stack':<16} | {'Output':<16}\n"
+            f"--------------------------------------------------------------------------------------------------\n"
         )
 
         for i in range(tabel_langkah.panjang()):
             step = tabel_langkah.get(i)
-            hasil_teks += f"{step.langkah:<8} | {step.token:<8} | {step.tindakan:<46} | {step.stack_str:<18} | {step.output_str:<18}\n"
+            hasil_teks += f"{step.langkah:<8} | {step.token:<8} | {step.tindakan:<46} | {step.stack_str:<16} | {step.output_str:<16}\n"
 
         hasil_teks += (
-            f"{garis}\n"
+            f"--------------------------------------------------------------------------------------------------\n"
             f"TOTAL : {str_rp}\n"
-            f"{garis}\n"
+            f"--------------------------------------------------------------------------------------------------\n"
         )
         self._tampilkan_hasil(hasil_teks)
-
-    # =========================================================================
-    # FORM M2: QUEUE ENQUEUE & DEQUEUE
-    # =========================================================================
-
-    def _form_enqueue(self):
-        f = ttk.Frame(self.form_container)
-        f.pack(fill=tk.X, pady=2)
-
-        ttk.Label(f, text="Nama Pelanggan:").pack(side=tk.LEFT, padx=(0, 4))
-        ent_nama = ttk.Entry(f, width=20)
-        ent_nama.insert(0, f"Customer Antre {self.counter_id_baru}")
-        ent_nama.pack(side=tk.LEFT, padx=(0, 10))
-
-        ttk.Label(f, text="Resto:").pack(side=tk.LEFT, padx=(0, 4))
-        ent_resto = ttk.Entry(f, width=16)
-        ent_resto.insert(0, "warung-bu-ida")
-        ent_resto.pack(side=tk.LEFT, padx=(0, 10))
-
-        ttk.Label(f, text="Menu:").pack(side=tk.LEFT, padx=(0, 4))
-        ent_menu = ttk.Entry(f, width=16)
-        ent_menu.insert(0, "ayam-geprek")
-        ent_menu.pack(side=tk.LEFT, padx=(0, 10))
-
-        btn = ttk.Button(
-            f, text="ENQUEUE KE DUA ANTREAN",
-            command=lambda: self._jalankan_enqueue(ent_nama.get(), ent_resto.get(), ent_menu.get())
-        )
-        btn.pack(side=tk.LEFT)
-
-    def _jalankan_enqueue(self, nama, resto, menu):
-        oid = f"O-Q-{self.counter_id_baru:05d}"
-        self.counter_id_baru += 1
-        pesanan = Pesanan(oid, nama, resto, menu, 20000, 3, int(time.time()), None, "ANTRE")
-
-        p, durasi = self.layanan_antrean.enqueue(pesanan)
-        self.catat_command("QUEUE_ENQUEUE", "m2_queue", durasi)
-
-        stats = self.layanan_antrean.stats()
-        teks = (
-            f"=== HASIL OPERASI ENQUEUE (KEDUA ANTREAN) ===\n"
-            f"Waktu Operasi            : {durasi * 1000:.4f} ms\n"
-            f"Panjang Antrean Naif     : {stats.queue_len_naif:,}\n"
-            f"Panjang Antrean Circular : {stats.queue_len_circular:,}\n"
-            f"Kapasitas Antrean        : {stats.queue_capacity_circular:,}\n"
-            f"Kedalaman Tumpukan Undo  : {stats.undo_depth}\n"
-            f"Kedalaman Tumpukan Redo  : {stats.redo_depth} (Dikosongkan otomatis saat aksi baru)\n\n"
-            f"[DETAIL PESANAN DI-ENQUEUE]\n{pesanan.ringkasan()}\n"
-        )
-        self._tampilkan_hasil(teks)
-
-    def _form_dequeue(self, metode):
-        f = ttk.Frame(self.form_container)
-        f.pack(fill=tk.X, pady=2)
-
-        ttk.Label(f, text=f"Jumlah Pesanan yang Di-dequeue ({metode.upper()}):").pack(side=tk.LEFT, padx=(0, 6))
-        ent_n = ttk.Entry(f, width=10)
-        ent_n.insert(0, "100")
-        ent_n.pack(side=tk.LEFT, padx=(0, 10))
-
-        btn = ttk.Button(
-            f, text=f"JALANKAN DEQUEUE {metode.upper()}",
-            command=lambda: self._jalankan_dequeue(metode, ent_n.get())
-        )
-        btn.pack(side=tk.LEFT)
-
-    def _jalankan_dequeue(self, metode, str_n):
-        try:
-            n = int(str_n)
-            if n <= 0:
-                raise ValueError
-        except ValueError:
-            messagebox.showerror("Galat", "Jumlah dequeue harus berupa bilangan bulat positif.")
-            return
-
-        if self.layanan_antrean.antrean_circular.is_empty():
-            messagebox.showwarning("Peringatan", "Antrean kosong. Tidak ada pesanan untuk di-dequeue.")
-            return
-
-        cmd_name = "DEQUEUE_NAIF" if metode == "naif" else "DEQUEUE_CIRCULAR"
-
-        if metode == "naif":
-            daftar_keluar, durasi, geseran = self.layanan_antrean.dequeue_naif(n)
-        else:
-            daftar_keluar, durasi, geseran = self.layanan_antrean.dequeue_circular(n)
-
-        self.catat_command(cmd_name, "m2_queue", durasi)
-
-        stats = self.layanan_antrean.stats()
-        garis = "=" * 80
-        teks = (
-            f"{garis}\n"
-            f"               HASIL OPERASI DEQUEUE ({metode.upper()})\n"
-            f"{garis}\n"
-            f"Pesanan Berhasil Keluar  : {daftar_keluar.panjang():,} pesanan\n"
-            f"Waktu Eksekusi           : {durasi * 1000:.4f} ms ({durasi:.6f} s)\n"
-            f"Elemen Digeser Operasi Ini: {geseran:,}\n"
-            f"Total Geseran Kumulatif Naif : {stats.total_geseran_naif:,}\n"
-            f"Total Geseran Circular       : {stats.total_geseran_circular:,}\n"
-            f"Sisa Panjang Antrean     : {stats.queue_len_circular:,}\n"
-            f"Kedalaman Tumpukan Undo  : {stats.undo_depth}\n"
-            f"Kedalaman Tumpukan Redo  : {stats.redo_depth} (Dikosongkan otomatis)\n"
-            f"{garis}\n"
-            f"SAMPEL PESANAN YANG KELUAR (Maksimal 10 pertama ditampilkan):\n"
-        )
-
-        tampil_maks = 10 if daftar_keluar.panjang() > 10 else daftar_keluar.panjang()
-        for i in range(tampil_maks):
-            p = daftar_keluar.get(i)
-            teks += f"  [{i+1:>2}] {p.oid:<10} | Pelanggan: {p.pelanggan:<20} | Menu: {p.menu:<18} | Rp {p.harga:,}\n"
-
-        if daftar_keluar.panjang() > 10:
-            teks += f"  ... dan {daftar_keluar.panjang() - 10} pesanan lainnya.\n"
-
-        teks += f"{garis}\n"
-        self._tampilkan_hasil(teks)
-
-    # =========================================================================
-    # FORM M2: UNDO & REDO
-    # =========================================================================
-
-    def _form_undo_redo(self, tipe):
-        f = ttk.Frame(self.form_container)
-        f.pack(fill=tk.X, pady=2)
-
-        label_teks = "Batalkan aksi terakhir (Undo)" if tipe == "undo" else "Ulang aksi yang baru dibatalkan (Redo)"
-        ttk.Label(f, text=label_teks).pack(side=tk.LEFT, padx=(0, 10))
-
-        btn = ttk.Button(
-            f, text=f"JALANKAN {tipe.upper()}",
-            command=lambda: self._jalankan_undo_redo(tipe)
-        )
-        btn.pack(side=tk.LEFT)
-
-    def _jalankan_undo_redo(self, tipe):
-        cmd_name = "STACK_UNDO" if tipe == "undo" else "STACK_REDO"
-
-        if tipe == "undo":
-            sukses, pesan, durasi = self.layanan_antrean.undo_last()
-        else:
-            sukses, pesan, durasi = self.layanan_antrean.redo_last()
-
-        self.catat_command(cmd_name, "m2_stack", durasi)
-        stats = self.layanan_antrean.stats()
-
-        garis = "=" * 70
-        teks = (
-            f"{garis}\n"
-            f"               STATUS OPERASI {tipe.upper()}\n"
-            f"{garis}\n"
-            f"Status                   : {'BERHASIL' if sukses else 'GAGAL / KOSONG'}\n"
-            f"Keterangan               : {pesan}\n"
-            f"Waktu Operasi            : {durasi * 1000:.4f} ms\n"
-            f"Panjang Antrean Terkini  : {stats.queue_len_circular:,}\n"
-            f"Kedalaman Tumpukan Undo  : {stats.undo_depth}\n"
-            f"Kedalaman Tumpukan Redo  : {stats.redo_depth}\n"
-            f"{garis}\n"
-        )
-        self._tampilkan_hasil(teks)
 
 
 def main():
