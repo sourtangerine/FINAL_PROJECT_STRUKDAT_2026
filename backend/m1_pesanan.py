@@ -24,15 +24,15 @@ class Pesanan:
     )
 
     def __init__(self, oid, pelanggan, resto, menu, harga, prioritas, t_masuk_detik, t_selesai_detik, status):
-        self.oid = oid
-        self.pelanggan = pelanggan
-        self.resto = resto
-        self.menu = menu
+        self.oid = str(oid)
+        self.pelanggan = str(pelanggan)
+        self.resto = str(resto)
+        self.menu = str(menu)
         self.harga = int(harga) if harga is not None and str(harga).strip() != "" else 0
         self.prioritas = int(prioritas) if prioritas is not None and str(prioritas).strip() != "" else 3
         self.t_masuk_detik = int(t_masuk_detik) if t_masuk_detik is not None and str(t_masuk_detik).strip() != "" else 0
         self.t_selesai_detik = int(t_selesai_detik) if t_selesai_detik is not None and str(t_selesai_detik).strip() != "" else None
-        self.status = status
+        self.status = str(status)
 
     def __repr__(self):
         return f"Pesanan({self.oid}, {self.pelanggan}, {self.menu}, Rp{self.harga:,}, P:{self.prioritas}, {self.status})"
@@ -53,7 +53,6 @@ class Array:
     Mengelola buffer berukuran tetap [None] * kapasitas.
     """
     def __init__(self, kapasitas_awal=8):
-        # Kapasitas minimum 4
         if kapasitas_awal < 4:
             kapasitas_awal = 4
         self.kapasitas = kapasitas_awal
@@ -77,14 +76,17 @@ class Array:
 
     # O(1) amortized: masukkan ke indeks paling belakang
     def append(self, v):
+        t_awal = time.perf_counter()
         if self.ukuran == self.kapasitas:
             self._tumbuh()
         self.data[self.ukuran] = v
         self.ukuran += 1
         self.geseran = 0
+        self.waktu_operasi = time.perf_counter() - t_awal
 
     # O(n): geser elemen dari indeks i ke kanan dengan perulangan eksplisit
     def insert(self, i, v):
+        t_awal = time.perf_counter()
         if i < 0:
             i = 0
         if i > self.ukuran:
@@ -101,20 +103,25 @@ class Array:
         self.data[i] = v
         self.ukuran += 1
         self.geseran = jumlah_geser
+        self.waktu_operasi = time.perf_counter() - t_awal
 
     # O(1): akses langsung berdasarkan indeks
     def get(self, i):
+        t_awal = time.perf_counter()
         self.geseran = 0
         if i < 0 or i >= self.ukuran:
+            self.waktu_operasi = time.perf_counter() - t_awal
             return None
-        return self.data[i]
+        hasil = self.data[i]
+        self.waktu_operasi = time.perf_counter() - t_awal
+        return hasil
 
     # O(n): geser elemen setelah indeks i ke kiri dengan perulangan eksplisit
     def hapus(self, i):
         if i < 0 or i >= self.ukuran:
             self.geseran = 0
             self.waktu_operasi = 0.0
-            return (None, 0.0, 0)
+            return None
 
         t_awal = time.perf_counter()
         terhapus = self.data[i]
@@ -127,48 +134,47 @@ class Array:
         self.ukuran -= 1
         self.geseran = jumlah_geser
         self.waktu_operasi = time.perf_counter() - t_awal
+        return terhapus
+
+    def hapus_dengan_metrik(self, i):
+        terhapus = self.hapus(i)
         return (terhapus, self.waktu_operasi, self.geseran)
 
     # O(1): ambil dan buang elemen terakhir (berguna untuk Tumpukan)
     def pop_belakang(self):
         if self.ukuran == 0:
             self.geseran = 0
+            self.waktu_operasi = 0.0
             return None
+        t_awal = time.perf_counter()
         self.ukuran -= 1
         val = self.data[self.ukuran]
         self.data[self.ukuran] = None
         self.geseran = 0
+        self.waktu_operasi = time.perf_counter() - t_awal
         return val
 
     # --- 5 Operasi Utama dengan Pengukuran Waktu & Metrik Kerja ---
 
     # O(1): lihat pesanan ke-i
     def lihat(self, i):
-        t_awal = time.perf_counter()
         hasil = self.get(i)
-        self.waktu_operasi = time.perf_counter() - t_awal
         return (hasil, self.waktu_operasi, self.geseran)
 
     # O(1) amortized: tambah REGULER di paling belakang
     def tambah_reguler(self, v):
-        t_awal = time.perf_counter()
         self.append(v)
-        self.waktu_operasi = time.perf_counter() - t_awal
         return (v, self.waktu_operasi, self.geseran)
 
     # O(n): tambah PRIORITAS di tengah (indeks n // 2)
     def tambah_prioritas(self, v):
-        t_awal = time.perf_counter()
         posisi = self.ukuran // 2
         self.insert(posisi, v)
-        self.waktu_operasi = time.perf_counter() - t_awal
         return (v, self.waktu_operasi, self.geseran)
 
     # O(n): tambah VIP di paling depan (indeks 0)
     def tambah_vip(self, v):
-        t_awal = time.perf_counter()
         self.insert(0, v)
-        self.waktu_operasi = time.perf_counter() - t_awal
         return (v, self.waktu_operasi, self.geseran)
 
 
@@ -200,6 +206,7 @@ class LinkList:
 
     # O(1): tambah di belakang memakai penunjuk tail
     def append(self, v):
+        t_awal = time.perf_counter()
         simpul_baru = Node(v)
         if self.ukuran == 0:
             self.head = simpul_baru
@@ -209,18 +216,22 @@ class LinkList:
             self.tail = simpul_baru
         self.ukuran += 1
         self.langkah_telusur = 0
+        self.waktu_operasi = time.perf_counter() - t_awal
 
     # O(1): tambah di depan (head)
     def tambah_depan(self, v):
+        t_awal = time.perf_counter()
         simpul_baru = Node(v, self.head)
         self.head = simpul_baru
         if self.tail is None:
             self.tail = simpul_baru
         self.ukuran += 1
         self.langkah_telusur = 0
+        self.waktu_operasi = time.perf_counter() - t_awal
 
     # O(n): sisip pada indeks i dengan penelusuran
     def insert(self, i, v):
+        t_awal = time.perf_counter()
         if i <= 0:
             self.tambah_depan(v)
             return
@@ -239,11 +250,14 @@ class LinkList:
         curr.next = simpul_baru
         self.ukuran += 1
         self.langkah_telusur = langkah + 1
+        self.waktu_operasi = time.perf_counter() - t_awal
 
     # O(n): telusur dari head sampai indeks i
     def get(self, i):
+        t_awal = time.perf_counter()
         if i < 0 or i >= self.ukuran:
             self.langkah_telusur = 0
+            self.waktu_operasi = time.perf_counter() - t_awal
             return None
 
         curr = self.head
@@ -253,6 +267,7 @@ class LinkList:
             langkah += 1
 
         self.langkah_telusur = langkah
+        self.waktu_operasi = time.perf_counter() - t_awal
         return curr.nilai
 
     # O(n): hapus pada indeks i dengan penelusuran (menjaga head dan tail)
@@ -260,7 +275,7 @@ class LinkList:
         if i < 0 or i >= self.ukuran:
             self.langkah_telusur = 0
             self.waktu_operasi = 0.0
-            return (None, 0.0, 0)
+            return None
 
         t_awal = time.perf_counter()
         if i == 0:
@@ -271,7 +286,7 @@ class LinkList:
             self.ukuran -= 1
             self.langkah_telusur = 0
             self.waktu_operasi = time.perf_counter() - t_awal
-            return (terhapus, self.waktu_operasi, 0)
+            return terhapus
 
         # Telusur sampai sebelum simpul yang dihapus
         curr = self.head
@@ -289,37 +304,33 @@ class LinkList:
         self.ukuran -= 1
         self.langkah_telusur = langkah + 1
         self.waktu_operasi = time.perf_counter() - t_awal
+        return terhapus
+
+    def hapus_dengan_metrik(self, i):
+        terhapus = self.hapus(i)
         return (terhapus, self.waktu_operasi, self.langkah_telusur)
 
     # --- 5 Operasi Utama dengan Pengukuran Waktu & Metrik Kerja ---
 
     # O(n): telusur ke simpul indeks i
     def lihat(self, i):
-        t_awal = time.perf_counter()
         hasil = self.get(i)
-        self.waktu_operasi = time.perf_counter() - t_awal
         return (hasil, self.waktu_operasi, self.langkah_telusur)
 
     # O(1): tambah REGULER di paling belakang menggunakan tail
     def tambah_reguler(self, v):
-        t_awal = time.perf_counter()
         self.append(v)
-        self.waktu_operasi = time.perf_counter() - t_awal
         return (v, self.waktu_operasi, self.langkah_telusur)
 
     # O(n): tambah PRIORITAS di tengah (indeks n // 2) dengan penelusuran
     def tambah_prioritas(self, v):
-        t_awal = time.perf_counter()
         posisi = self.ukuran // 2
         self.insert(posisi, v)
-        self.waktu_operasi = time.perf_counter() - t_awal
         return (v, self.waktu_operasi, self.langkah_telusur)
 
     # O(1): tambah VIP di paling depan
     def tambah_vip(self, v):
-        t_awal = time.perf_counter()
         self.tambah_depan(v)
-        self.waktu_operasi = time.perf_counter() - t_awal
         return (v, self.waktu_operasi, self.langkah_telusur)
 
 
@@ -358,20 +369,11 @@ def muat_pesanan(path_csv, max_baris=None):
         for baris in reader:
             if max_baris is not None and baris_terbaca >= max_baris:
                 break
-            # Parsing kolom tanpa menggunakan dictionary
-            # oid, pelanggan, resto, menu, harga, prioritas, t_masuk_detik, t_selesai_detik, status
             if len(baris) >= 9:
-                oid = baris[0]
-                pelanggan = baris[1]
-                resto = baris[2]
-                menu = baris[3]
-                harga = baris[4]
-                prioritas = baris[5]
-                t_masuk = baris[6]
-                t_selesai = baris[7]
-                status = baris[8]
-
-                p = Pesanan(oid, pelanggan, resto, menu, harga, prioritas, t_masuk, t_selesai, status)
+                p = Pesanan(
+                    baris[0], baris[1], baris[2], baris[3],
+                    baris[4], baris[5], baris[6], baris[7], baris[8]
+                )
                 arr.append(p)
                 baris_terbaca += 1
 
