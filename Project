@@ -1,0 +1,147 @@
+# 2EZ4U APP: Inti M1 & M2
+
+## Aturan Global (berlaku untuk M1 dan M2)
+- Python 3.11+, individu, repo GitHub (`data/`, `backend/`, `frontend/`, `app.py`, `README.md`).
+- **DILARANG**: `dict`, `set`, `sorted`, `.sort()`, `heapq`, `bisect`, `collections.*`, literal `{}`, comprehension dict/set.
+- **BOLEH**: `list` sebagai array primitif, tuple, aritmetika, I/O.
+- Struktur data dan algoritma harus buatan sendiri. Nilai terbesar ada di implementasi, bukan estetika UI.
+- UI: satu jendela Tkinter. Menu di kiri, form + hasil di kanan, panel COMMAND di bawah (perintah, modul, waktu).
+- Data: `data/pesanan.csv` (200.000 baris). Kolom: `oid, pelanggan, resto, menu, harga, prioritas (1=VIP, 2=Prioritas, 3=Reguler), t_masuk_detik, t_selesai_detik, status (DONE/CANCEL/ANTRE)`.
+- README wajib: deskripsi, cara menjalankan, diagram, screenshot, video demo, catatan penting.
+
+---
+
+## M1: Array vs Linked List
+**Kerja minggu 2–4 · deadline akhir minggu 4 · bobot 10% · berkas: `backend/m1_pesanan.py`**
+
+### Yang harus dibuat
+Pesanan yang sama disimpan di **dua struktur sekaligus**: **Array** dan **LinkList**. Keduanya melayani 5 operasi yang persis sama:
+
+| Operasi | Array | Linked List |
+|---|---|---|
+| Lihat pesanan ke-i | O(1) | O(n) |
+| Tambah REGULER (paling belakang) | O(1) amortized | O(1) (pakai tail) |
+| Tambah PRIORITAS (tengah, n/2) | O(n) | O(n) telusur |
+| Tambah VIP (paling depan) | O(n) | O(1) |
+| Hapus pesanan ke-i | O(n) | O(n) telusur |
+
+### Poin kritis
+- **Array = dynamic array buatan sendiri**: bila penuh, alokasi petak baru **2x kapasitas**, salin isi, buang yang lama. Dilarang menyalin tiap append (jadi O(n²) dan gagal uji skala).
+- **Linked List**: simpul (nilai + penunjuk berikutnya), simpan **head dan tail** supaya tambah belakang O(1).
+- Pemuatan 200.000 baris harus cepat (amortized O(1) per append).
+- Jenis pesanan menentukan posisi sisip: VIP -> indeks 0, PRIORITAS -> tengah, REGULER -> belakang.
+
+### Menu UI (10 tombol)
+`ARRAY` dan `LINKEDLIST`, masing-masing: LIHAT PESANAN, TAMBAH REGULER, TAMBAH PRIORITAS, TAMBAH VIP, HAPUS PESANAN. Setiap aksi mencatat waktu di panel COMMAND.
+
+### Angka acuan (200.000 baris)
+| Jenis | Array | Linked List |
+|---|---|---|
+| REGULER | 0,02 ms | 0,01 ms |
+| PRIORITAS | 3,71 ms | 2,19 ms |
+| VIP | 6,82 ms | 0,00 ms |
+
+Yang dinilai adalah **polanya**, bukan angka persisnya.
+
+### Checklist M1
+- [ ] Array (dynamic, 2x growth) dan LinkList (head + tail) dengan 5 operasi sama.
+- [ ] 3 jenis sisip bekerja benar di kedua struktur.
+- [ ] 10 menu UI tersambung dan waktu tercatat di COMMAND.
+- [ ] Load 200.000 baris tidak lambat (tidak O(n²)).
+- [ ] README: alasan desain + tabel perbandingan waktu array vs linked list.
+
+---
+
+## M2: Stack & Queue
+**Kerja minggu 4–6 · deadline akhir minggu 6 · bobot 15% · berkas: `backend/m2_antrean.py`**
+
+### Fungsi yang harus ada
+- `ke_postfix(ekspresi)`: infix -> postfix pakai stack operator.
+- `hitung(postfix)`: evaluasi postfix pakai stack angka, kembalikan total.
+- `undo_last()`: batalkan aksi terakhir, konsisten dengan `history()`.
+- `redo_last()`: ulang aksi yang baru dibatalkan. **Aksi baru apa pun mengosongkan tumpukan redo.**
+- `enqueue(x)`: tambah di belakang, O(1).
+- `dequeue()`: **DUA versi wajib**: naif (larik + ambil indeks 0, geser sisa) dan **melingkar** (circular).
+
+### Aturan infix -> postfix
+- Angka langsung ke keluaran.
+- `(` di-push ke stack.
+- `)` pop sampai ketemu `(`, lalu buang `(` (tidak masuk output).
+- Operator: pop dulu operator di puncak yang **lebih kuat atau sama kuat**, baru push.
+- Token habis: pop seluruh sisa stack.
+- Prioritas: `*` `/` > `+` `-`.
+- Tokenizer: angka multi-digit satu token (`12000`, bukan `1`, `2`, ...).
+- Contoh uji: `( 3 * 12000 ) + ( 2 * 8500 ) - 5000` -> `3 12000 * 2 8500 * + 5000 -` -> **Rp 48.000**.
+
+### Jebakan evaluasi postfix
+Pop pertama = operand **kanan**. Untuk `-` dan `/`: `b = pop()`, lalu `a = pop()`, hitung `a - b`. Kalau terbalik, `+` dan `*` tetap benar tapi `-` dan `/` salah. Uji khusus dengan pengurangan dan pembagian.
+
+### Undo / Redo
+| Kejadian | Tumpukan |
+|---|---|
+| Aksi baru (enqueue/dequeue) | push ke undo; **kosongkan redo** |
+| `undo_last()` | pop undo, jalankan **kebalikannya**, push ke redo |
+| `redo_last()` | pop redo, kerjakan **aksi aslinya**, push kembali ke undo |
+
+| Aksi tercatat | Kebalikan saat undo |
+|---|---|
+| ENQUEUE oid | keluarkan lagi oid dari **belakang** |
+| DEQUEUE daftar | kembalikan seluruh isi ke **depan** (bukan belakang) |
+
+Simpan **daftar pesanan** yang di-dequeue (bukan cuma jumlahnya), supaya bisa dikembalikan.
+
+### Antrean melingkar
+- Field: `data`, `front`, `rear`, `count`, kapasitas `K`.
+- `enqueue`: `data[rear] = x; rear = (rear+1) % K; count += 1`
+- `dequeue`: `x = data[front]; front = (front+1) % K; count -= 1`
+- `is_empty()`: `count == 0` (jangan pakai `front == rear`).
+- Pakai `count` (disarankan) atau sisakan 1 slot kosong; **tulis alasannya di README**.
+- Kasus batas wajib eksplisit: dequeue saat kosong (kembalikan `None`), enqueue saat penuh (tumbuh atau tolak, dokumentasikan).
+- Antrean naif: hitung dan simpan **jumlah geseran** untuk ditampilkan.
+- Kedua antrean diisi **pesanan yang sama persis** (pesanan berstatus ANTRE, ~19.850) supaya perbandingan jujur.
+
+### Menu UI (6 tombol)
+STACK - POSTFIX (MESIN KASIR) · STACK - UNDO · STACK - REDO · QUEUE - ENQUEUE · QUEUE - DEQUEUE NAIF · QUEUE - DEQUEUE CIRCULAR.
+- Postfix: tampilkan tabel langkah (langkah, token, tindakan, stack, output), baris `1.x` konversi dan `2.x` evaluasi.
+- Enqueue: masuk ke **kedua** antrean sekaligus.
+- Undo/redo: tampilkan panjang antrean dan kedalaman tumpukan undo/redo.
+
+### `stats()` harus memuat
+`queue_len` (kedua versi), `queue_capacity`, total geseran, `undo_depth`, `redo_depth`.
+
+### Angka acuan
+| Aksi | Naif | Circular |
+|---|---|---|
+| dequeue 1 pesanan | 19.850 geser, 1,07 ms | 0 geser, 0,01 ms |
+| dequeue 100 pesanan | 1.979.950 geser, 93,27 ms | 0 geser, 0,03 ms |
+
+`enqueue` sama murahnya di keduanya; seluruh selisih muncul di `dequeue`.
+
+### Urutan kerja yang disarankan
+1. Stack di atas Array (push, pop, peek, kosong).
+2. Tokenizer kasir.
+3. `ke_postfix`, uji 4 ekspresi: tanpa kurung, berkurung, `-` beruntun, kurung bersarang.
+4. `hitung`, uji `-` dan `/`.
+5. AntreanNaif (hitung geseran).
+6. AntreanMelingkar(K), **uji terpenting**: K=4, masuk 3, keluar 2, masuk 3 lagi, pastikan penunjuk berputar dan data benar.
+7. Kasus batas (kosong/penuh).
+8. Isi kedua antrean dari data sama, sambungkan 6 menu, tiap aksi masuk undo dan mengosongkan redo.
+9. Tambah `stats()`.
+
+### Checklist M2
+- [ ] Postfix benar + total benar (termasuk `-`, `/`, kurung bersarang).
+- [ ] Undo/redo konsisten; redo kosong setelah aksi baru.
+- [ ] Antrean naif dan melingkar menghasilkan keluaran identik pada data sama.
+- [ ] Uji wrap-around K=4 lulus; kasus kosong/penuh ditangani.
+- [ ] 6 menu UI jalan, waktu dan jumlah geseran tampil.
+- [ ] README: alasan `count` vs slot kosong, perbandingan naif vs circular.
+
+---
+
+## Jadwal & Tag
+| | Kerja | Deadline | Bobot |
+|---|---|---|---|
+| M1 | Minggu 2–4 | Akhir minggu 4 | 10% |
+| M2 | Minggu 4–6 | Akhir minggu 6 | 15% |
+
+Demo Progress minggu 9. Tag git `m3` wajib di-push sebelum sesi (tes M1-M2 harus tetap hijau).
